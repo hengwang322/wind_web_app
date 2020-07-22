@@ -13,7 +13,7 @@ DARKSKY_KEY = os.environ['DARKSKY_KEY']
 
 FARM_LIST = ['BLUFF1', 'CATHROCK', 'CLEMGPWF', 'HALLWF2', 'HDWF2', 'LKBONNY2', 'MTMILLAR',
              'NBHWF1', 'SNOWNTH1', 'SNOWSTH1', 'STARHLWF', 'WATERLWF', 'WPWF']
-FARM_NAME_LIST = ['The Bluff Wind Farm', 'Cathedral Rocks Wind Farm', 'Clements Gap Wind Farm',
+FARM_NAME_LIST = ['Bluff Wind Farm', 'Cathedral Rocks Wind Farm', 'Clements Gap Wind Farm',
                   'Hallett 2 Wind Farm', 'Hornsdale Wind Farm 2', 'Lake Bonney Stage 2 Windfarm',
                   'Mt Millar Wind Farm', 'North Brown Hill Wind Farm', 'Snowtown Wind Farm Stage 2 North',
                   'Snowtown South Wind Farm', 'Starfish Hill Wind Farm', 'Waterloo Wind Farm', 'Wattle Point Wind Farm']
@@ -32,9 +32,9 @@ def fetch_data(farm, limit):
     print(f"Fetching data for {farm}...", end="", flush=True)
     col = db[farm]
     if limit == None:
-        df = pd.DataFrame(col.find({}))
+        df = pd.DataFrame(col.find({},batch_size=10000).sort("_id",-1))
     else:
-        df = pd.DataFrame(col.find({}).skip(col.count_documents({}) - limit))
+        df = pd.DataFrame(col.find({},batch_size=1000).sort("_id",-1).limit(limit))
 
     if '_id' in df.columns:
         df = df.rename(columns={'_id': 'time'})
