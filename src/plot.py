@@ -32,22 +32,22 @@ def format_title(string, acronym_list=['UV'], splitter='_'):
 @st.cache(persist=True, suppress_st_warning=True, ttl=600)
 def plot_map(farms):
     lastest_time = farms.dropna().iloc[:, 3][0]
-    lastest_time = arrow.get(lastest_time).to(tz).format("YYYY-MM-DD HH:mm:SS")
+    lastest_time = arrow.get(lastest_time).to(tz).format("YYYY-MM-DD HH:mm")
 
     # Rectify negative values
     bad_index = farms[farms['Current Output (MW)'] < 0].index
     farms.loc[bad_index, 'Current Output (MW)'] = 0
     farms.fillna(0, inplace=True)
-    farms['Current Output (MW)'] = farms['Current Output (MW)'].apply(
+    farms['Power (MW)'] = farms['Current Output (MW)'].apply(
         lambda x: round(x, 1))
 
     px.set_mapbox_access_token(MAPBOX_TOKEN)
-    fig = px.scatter_mapbox(farms.loc[FARM_LIST, :], lat="Lat", lon="Lon", zoom=4.5,
-                            text='Station Name', size='Current Output (MW)',
-                            color="Current Output (MW)",
+    fig = px.scatter_mapbox(farms.loc[FARM_LIST, :], lat="Lat", lon="Lon", zoom=5,
+                            text='Station Name', size='Power (MW)',
+                            color="Power (MW)",
                             color_continuous_scale=plotly.colors.sequential.haline,
-                            center={'lat': -35.5, 'lon': 137},
-                            title='An Overview of Wind Power Generation in South Australia')
+                            center={'lat': -35.7, 'lon': 137.5},
+                            title='Wind Power Generation in South Australia')
 
     fig.update_layout(annotations=[go.layout.Annotation(
                       showarrow=False,
@@ -55,7 +55,11 @@ def plot_map(farms):
                       x=1,
                       yanchor='top',
                       y=0,
-                      text=f'Last Update: {lastest_time} AEST')])
+                      text=f'Last Update: {lastest_time} AEST')],
+                      title_x=0.5,
+                      title_y=0.92,
+                      margin=dict(l=20, r=20, t=60, b=80),
+                      )
 
     return fig
 
@@ -70,26 +74,30 @@ def plot_forecast(df, farm):
         df['prediction'], 2), name="Prediction"))
 
     title_text = f'Hourly Wind Power Prediction at {farm_name}'
-    last_index = df[df.actual.isna()].index[0]
+    latest = df[df.actual.isna()].index[-1]
 
     fig.update_xaxes(nticks=12)
     fig.add_shape(
         dict(type="line",
              yref="paper",
-             x0=df.loc[last_index-1, 'time'],
+             x0=df.loc[latest+1, 'time'],
              y0=0,
-             x1=df.loc[last_index-1, 'time'],
+             x1=df.loc[latest+1, 'time'],
              y1=1,
              line=dict(color="Grey", width=1.5, dash="dash")))
-    fig.add_annotation(x=df.loc[last_index, 'time'],
+    fig.add_annotation(x=df.loc[latest+10, 'time'],
                        yref="paper",
                        y=1.07,
                        showarrow=False,
-                       text=f"Last update: {df.loc[last_index,'time']} AEST")
+                       text=f"Last Update {df.loc[latest,'time'][:16]} AEST")
 
     fig.update_layout(hovermode='x',
                       title_text=title_text,
-                      yaxis_title="Power (MW)")
+                      title_x = 0.5,
+                      title_y = 0.92,
+                      yaxis_title="Power (MW)",
+                      margin=dict(l=0, r=0, t=80, b=20)
+                      )
     return fig
 
 
@@ -106,7 +114,10 @@ def plot_historical(df, farm):
 
     fig.update_layout(hovermode='x',
                       title_text=title_text,
-                      yaxis_title="Power (MW)")
+                      title_x = 0.5,
+                      title_y = 0.9,
+                      yaxis_title="Power (MW)",
+                      margin=dict(l=0, r=0, t=80, b=20))
     return fig
 
 
@@ -122,11 +133,14 @@ def plot_error(df, farm):
     fig.add_trace(go.Scatter(x=df.date, y=round(
         df['error'], 2), name="Prediction Error"))
 
-    title_text = f'Average Prediction Error at {farm_name} over Last 3 Months'
+    title_text = f'Average Prediction Error at {farm_name} (Last 3 Months)'
 
     fig.update_layout(hovermode='x',
                       yaxis_title="Power (MW)",
-                      title_text=title_text)
+                      title_text=title_text,
+                      title_x = 0.5,
+                      title_y = 0.9,
+                      margin=dict(l=0, r=0, t=80, b=20))
     return fig
 
 
@@ -155,6 +169,6 @@ def plot_weather(df, farm):
         fig.update_yaxes(title_text=unit, showgrid=False, row=i+1, col=1)
 
     fig.update_layout(hovermode='x', width=700, height=900, title="Weather Data",
-                      margin=dict(l=20, r=20, t=60, b=20, pad=4))
+                      margin=dict(l=0, r=0, t=60, b=20))
 
     return fig

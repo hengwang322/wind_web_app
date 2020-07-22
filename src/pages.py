@@ -70,7 +70,7 @@ def forecast():
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
     df = load_data(farm, limit=24*4, dropna=False)
 
-    latest = df[df.isna().any(1)].index[0]-1
+    latest = df[df.actual.isna()].index[-1]+1
 
     show_gif(icon=df.loc[latest, 'icon'])
 
