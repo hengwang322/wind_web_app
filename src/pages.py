@@ -9,9 +9,10 @@ from sklearn.metrics import mean_squared_error as mse
 from xgboost import DMatrix, XGBRegressor
 from shap import summary_plot, waterfall_plot
 import streamlit as st
+from pymongo import MongoClient
 
 from .plot import plot_map, plot_forecast, plot_weather, plot_historical, plot_error, format_title
-from .data import FARM_LIST, FARM_NAME_LIST, connect_db, fetch_data
+from .data import FARM_LIST, FARM_NAME_LIST, fetch_data
 from .models import MODEL_FILE, TRAIN_LOG_FILE, transform_data
 
 tz = 'Australia/Sydney'
@@ -32,19 +33,30 @@ def load_overview_df():
     df.set_index('DUID', inplace=True)
     return df
 
+# @st.cache(hash_funcs={MongoClient: id})
+# def connect():
+#     MONGO_URI = os.environ['MONGO_URI']
+#     client = MongoClient(MONGO_URI)
+#     db = client["wpp"]
+#     return db
 
-@st.cache(persist=True, suppress_st_warning=True, ttl=600)
-def load_data(farm, limit, dropna=False):
-    df = fetch_data(farm, limit=limit)
-    # all time displayed in the web app is converted to AEST
-    df.time = df.time.apply(lambda t: arrow.get(
-        t).to(tz).format('YYYY-MM-DD HH:mm:SS'))
-    if dropna:
-        df.dropna(inplace=True)
+
+
+
+
+# @st.cache(persist=True, suppress_st_warning=True, ttl=600)
+def load_data(client, farm, limit, dropna=False):
+    with st.spinner("Fetching Data..."):
+        df = fetch_data(client, farm, limit=limit)
+        # all time displayed in the web app is converted to AEST
+        df.time = df.time.apply(lambda t: arrow.get(
+            t).to(tz).format('YYYY-MM-DD HH:mm:SS'))
+        if dropna:
+            df.dropna(inplace=True)
     return df
 
 
-def welcome():
+def welcome(client):
     st.header('Welcome to Wind Power Predictions')
     st.markdown('''<p style="text-align:justify;">
                 This a demo for medium-range wind power predictions for major wind farms in South Australia.</p>
@@ -65,10 +77,10 @@ def welcome():
                     Energy Mapping Infrastructure Project (AREMI)](https://nationalmap.gov.au/renewables/)')
 
 
-def forecast():
+def forecast(client):
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
-    df = load_data(farm, limit=24*4, dropna=False)
+    df = load_data(client, farm, limit=24*4, dropna=False)
 
     latest = df[df.actual.isna()].index[-1]+1
 
@@ -110,7 +122,7 @@ def forecast():
                     ''', unsafe_allow_html=True)
 
 
-def historical():
+def historical(client):
     range_dict = {'1 Week': 7*24, '1 Month': 30*24, '3 Months': 90 *
                   24, '6 Months': 180*24, '1 Year': 365*24, 'All time': None}
     range_select = st.selectbox(
@@ -118,7 +130,7 @@ def historical():
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
     show_gif(icon='default')
-    df = load_data(farm, limit=range_dict[range_select], dropna=True)
+    df = load_data(client, farm, limit=range_dict[range_select], dropna=True)
 
     st.plotly_chart(plot_historical(df, farm), use_container_width=True)
 
@@ -140,11 +152,11 @@ def historical():
                      ''', unsafe_allow_html=True)
 
 
-def performance():
+def performance(client):
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
     show_gif(icon='default')
-    df = load_data(farm, limit=30*24, dropna=True)
+    df = load_data(client, farm, limit=30*24, dropna=True)
     error = df.copy(deep=True)
     # todo: calculate from database instead
     error['date'] = pd.to_datetime(error.time).dt.date
@@ -190,7 +202,7 @@ def load_models():
     return pickle.load(open(MODEL_FILE, "rb"))
 
 
-def explain():
+def explain(client):
     st.header('Model Explainability')
     st.subheader(
         'Use SHAP to explain the output of the machine learning model')
@@ -203,7 +215,7 @@ def explain():
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     show_gif(icon='default')
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
-    df = load_data(farm, limit=200)
+    df = load_data(client, farm, limit=200)
     models = load_models()
     model = models[farm]
     with st.spinner("Running Calculations..."):
@@ -254,7 +266,7 @@ def explain():
             plt.clf()
 
 
-def about():
+def about(client):
     st.markdown('''
     <h1><a href="https://drive.google.com/file/d/14tvyZ9Lt3peM-9B2ZbAmw6HeRacYUzgW/view" target="_blank">🎐</a>Wind Power Prediction: About</h1>
     <h3>The Project</h3>

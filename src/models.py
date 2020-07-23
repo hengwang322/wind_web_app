@@ -12,10 +12,11 @@ from sklearn.metrics import mean_squared_error as mse
 from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
-from .data import fetch_data, FARM_LIST  # , transform_data, split_data
+from .data import fetch_data, FARM_LIST, connect_db
 
 MODEL_FILE = os.path.join("models", "models.pkl")
 TRAIN_LOG_FILE = os.path.join('models', 'train.log')
+MONGO_URI = os.environ['MONGO_URI']
 
 seed = randint(0, 10000)
 space = {'max_depth': hp.quniform("max_depth", 3, 15, 1),
@@ -77,7 +78,8 @@ def best_model_from_trials(trials):
 def optimize_model(farm, max_evals, timeout):
     time_start = time.time()
     # ingest data
-    df = fetch_data(farm, limit=None)
+    client = connect_db(MONGO_URI)
+    df = fetch_data(client, farm, limit=None)
     df.dropna(inplace=True)
     X, y = transform_data(df)
     X_train, X_val, X_test, y_train, y_val, y_test = split_data(

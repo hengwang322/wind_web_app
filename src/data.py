@@ -19,16 +19,13 @@ FARM_NAME_LIST = ['Bluff Wind Farm', 'Cathedral Rocks Wind Farm', 'Clements Gap 
                   'Snowtown South Wind Farm', 'Starfish Hill Wind Farm', 'Waterloo Wind Farm', 'Wattle Point Wind Farm']
 
 
-def connect_db():
-    client = MongoClient(MONGO_URI)
-    db = client["wpp"]
-    return db
+def connect_db(MONGO_URI):
+    return MongoClient(MONGO_URI)
 
 
-def fetch_data(farm, limit):
+def fetch_data(client, farm, limit):
     time_start = time.time()
-
-    db = connect_db()
+    db = client["wpp"]
     print(f"Fetching data for {farm}...", end="", flush=True)
     col = db[farm]
     if limit == None:
@@ -46,10 +43,10 @@ def fetch_data(farm, limit):
     return df
 
 
-def update_db(farm, update_df, upsert=True):
+def update_db(client, farm, update_df, upsert=True):
     if 'time' in update_df.columns:
         update_df = update_df.rename(columns={'time': '_id'})
-    db = connect_db()
+    db = client["wpp"]
     ops = []
     for i in range(len(update_df)):
         _id = update_df.iloc[i]._id

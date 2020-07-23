@@ -1,7 +1,16 @@
+import os
+
 import streamlit as st
 import pandas as pd
 import src.pages as pages
+from pymongo import MongoClient
 
+
+@st.cache(hash_funcs={MongoClient: id})
+def connect():
+    MONGO_URI = os.environ['MONGO_URI']
+    client = MongoClient(MONGO_URI)
+    return client
 
 def main():
     st.sidebar.subheader("Navigation")
@@ -15,7 +24,9 @@ def main():
     }
     page_select = st.sidebar.radio("Go to...", list(PAGES.keys()))
 
-    PAGES[page_select]()
+    client = connect()
+
+    PAGES[page_select](client)
 
 
 if __name__ == '__main__':
