@@ -46,7 +46,7 @@ def plot_map(farms):
                             text='Station Name', size='Power (MW)',
                             color="Power (MW)",
                             color_continuous_scale=plotly.colors.sequential.haline,
-                            center={'lat': -35.7, 'lon': 137.5},
+                            center={'lat': -35.5, 'lon': 137.5},
                             title='Wind Power Generation in South Australia')
 
     fig.update_layout(annotations=[go.layout.Annotation(
