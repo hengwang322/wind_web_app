@@ -29,9 +29,10 @@ def fetch_data(client, farm, limit):
     print(f"Fetching data for {farm}...", end="", flush=True)
     col = db[farm]
     if limit == None:
-        df = pd.DataFrame(col.find({},batch_size=10000).sort("_id",-1))
+        df = pd.DataFrame(col.find({}, batch_size=10000).sort("_id", -1))
     else:
-        df = pd.DataFrame(col.find({},batch_size=1000).sort("_id",-1).limit(limit))
+        df = pd.DataFrame(
+            col.find({}, batch_size=1000).sort("_id", -1).limit(limit))
 
     if '_id' in df.columns:
         df = df.rename(columns={'_id': 'time'})
@@ -43,9 +44,10 @@ def fetch_data(client, farm, limit):
     return df
 
 
-def update_db(client, farm, update_df, upsert=True):
+def update_db(farm, update_df, upsert=True):
     if 'time' in update_df.columns:
         update_df = update_df.rename(columns={'time': '_id'})
+    client = connect_db(MONGO_URI)
     db = client["wpp"]
     ops = []
     for i in range(len(update_df)):
@@ -72,6 +74,8 @@ def fill_val(df, offset):
             except:
                 v_minus = np.nan
 
+            # fill with the with the mean of the -24h and +24h data if they both exist
+            # otherwise, just fill with the one that exists
             if not pd.isnull(v_plus) and not pd.isnull(v_minus):
                 v = 0.5 * (v_plus + v_minus)
             elif pd.isnull(v_plus):
@@ -84,82 +88,42 @@ def fill_val(df, offset):
             df.loc[i, item] = v
 
 
-def get_ref_dt_range(df, utc_start_dt, utc_end_dt, freq):
-    '''
-    Get a reference datetime range df given utc_start_dt, utc_end_dt, freq and merge it to original df
-    This ensures df have no missing point in datetime 
-    Missing values will show up as NaN, which can be filled later
-    utc_start_dt and utc_end_dt are strings in the format of %Y-%m-%d %H:%M:%S
-    freq is a string that specify frequency (e.g., 5Min,1H)
-    output is a dataframe with no missing point in the desired datetime range
-    '''
-    ref_dt_range = pd.date_range(utc_start_dt, utc_end_dt, freq=freq)
-    ref_dt_range = pd.DataFrame(ref_dt_range, columns=['time'])
-    ref_dt_range['time'] = ref_dt_range['time'].apply(str)
-    df = pd.merge(df, ref_dt_range, left_on='time',
-                  right_on='time', how='outer', sort=True)
-
-    return df
-
-
-def get_power(farm, local_start_dt, local_end_dt, offset):
-    '''
-    Get the power data given datetime range
-    local_start_dt and local_end_dt are strings in the format of %Y-%m-%d %H:%M:%S
-    offset if a string corresponds to how far away from current time
-    return a dataframe with power output in 1h interval, with no gap in datetime or missing value 
-    '''
+def get_power(farm, local_start_dt, local_end_dt):
     tz = 'Australia/Adelaide'
-    dt_format = 'YYYY-MM-DD HH:mm:ss'
-    utc_start_dt = arrow.get(local_start_dt).replace(
-        tzinfo=tz).to('UTC').format(dt_format)
-    utc_end_dt = arrow.get(local_end_dt).replace(
-        tzinfo=tz).to('UTC').format(dt_format)
+    utc_start_dt = pd.to_datetime(
+        local_start_dt).tz_localize(tz).tz_convert('UTC')
+    utc_end_dt = pd.to_datetime(local_end_dt).tz_localize(tz).tz_convert('UTC')
 
-    # The api only returns data from the offset time to current time. Offset value should be estimated properly.
-    # Usually a larger window is chosen which is sliced to desired dt window later.
-    power_api = f'https://services.aremi.data61.io/aemo/v6/duidcsv/{farm}?offset={offset}'
-    power = pd.read_csv(power_api)
+    offset = (arrow.now() - arrow.get(local_start_dt)).days + 2
+    power_api = f'https://services.aremi.data61.io/aemo/v6/duidcsv/{farm}?offset={offset}D'
 
-    # Convert the time format from ISO to dt_format
-    power['time'] = power['Time (UTC)'].apply(
-        lambda t: arrow.get(t).format(dt_format))
-    power.drop(['Time (UTC)'], axis=1, inplace=True)
+    raw = pd.read_csv(power_api)
+    raw.columns = ['time', 'actual']
+    raw['time'] = pd.to_datetime(raw['time'])
 
-    # //todo: this only works when the between 30-59 minute of any hour if you're in a timezone that that has whole hour. Need to fix it.
-    # Get the row of the start date and end date, slice the df to desired dt range
-    start_index = 0
-    if power['time'][0] > utc_start_dt:
-        pass  # in case utc_start_time is after the data start time
-    else:
-        while not (utc_start_dt in str(power['time'][start_index])):
-            start_index += 1
+    # Ensure no vacant in the time series
+    reference_idx = pd.date_range(start=raw.iloc[0].time,
+                                  end=raw.iloc[-1].time,
+                                  freq="5min",
+                                  name='time')
 
-    # search from bottom to top for better performance
-    end_index = len(power) - 1
-    while not (utc_end_dt in str(power['time'][end_index])):
-        end_index -= 1
-    power = power[start_index:end_index]
+    raw = raw.set_index('time').reindex(reference_idx).reset_index()
+    fill_val(raw, offset=288)
 
-    # Join the reference dt range. If there's missing time points the row will show as NaN.
-    power = get_ref_dt_range(power, utc_start_dt, utc_end_dt, '5Min')
-    power.drop_duplicates(subset='time', keep='first', inplace=True)
-    power.reset_index(drop=True, inplace=True)
+    # Slice the raw df to a desired range
+    power_5min = raw[(raw['time'] >= utc_start_dt)
+                     & (raw['time'] < utc_end_dt)]
 
-    # Fill missing value, if any
-    fill_val(power, 288)
+    # rectify negative value
+    neg_idx = power_5min[power_5min.actual < 0].index
+    power_5min.loc[neg_idx, 'actual'] = 0
 
-    # Set negative values to 0, if any
-    for i in power[power['MW'] < 0].index:
-        power.loc[i, 'MW'] = 0
+    # aggregate by the hour
+    power_1h = power_5min.set_index('time')['actual'].resample(
+        '60min', base=30, label='left').mean().reset_index()
+    power_1h.time = power_1h.time.dt.strftime('%Y-%m-%d %H:%M:%S')
 
-    # Converts power output in 5min interval to 1h interval, the power is the mean of the power recorded within the hour.
-    power1h = pd.DataFrame()
-    for i in range(len(power)//12):
-        power1h.loc[i, 'time'] = power[i*12:(i+1)*12]['time'][i*12]
-        power1h.loc[i, 'actual'] = power[i*12:(i+1)*12]['MW'].mean()
-
-    return power1h
+    return power_1h
 
 
 def get_weather(farm, local_start_dt, local_end_dt):
@@ -193,9 +157,8 @@ def get_weather(farm, local_start_dt, local_end_dt):
         except:
             df = pd.DataFrame()
         weather = pd.concat([weather, df], axis=0, sort=True)
-    # Convert UNIX time to dt_format
-    weather['time'] = weather['time'].apply(
-        lambda t: arrow.get(int(t)).format(dt_format))
+
+    weather['time'] = pd.to_datetime(weather['time'], unit='s')
 
     weather = weather[['time', 'cloudCover', 'dewPoint', 'humidity', 'ozone', 'precipIntensity', 'pressure', 'icon',
                        'temperature',  'uvIndex', 'visibility', 'windBearing', 'windGust', 'windSpeed']]
@@ -204,11 +167,14 @@ def get_weather(farm, local_start_dt, local_end_dt):
                        'temperature',  'uv_index', 'visibility', 'wind_bearing', 'wind_gust', 'wind_speed']
 
     # make sure there's no missing point in datetime range
-    weather = get_ref_dt_range(
-        weather, weather.iloc[0, 0], weather.iloc[-1, 0], '1H')
-    weather.drop_duplicates(subset='time', keep='first', inplace=True)
-    weather.reset_index(drop=True, inplace=True)
+    reference_idx = pd.date_range(start=weather.iloc[0].time,
+                                  end=weather.iloc[-1].time,
+                                  freq="1H",
+                                  name='time')
+    weather = weather.set_index('time').reindex(reference_idx).reset_index()
+    fill_val(weather, offset=24)
 
+    weather.time = weather.time.dt.strftime('%Y-%m-%d %H:%M:%S')
     weather.wind_bearing = weather.wind_bearing.apply(float)
     weather.uv_index = weather.uv_index.apply(float)
 

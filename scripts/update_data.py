@@ -12,6 +12,7 @@ import streamlit as st
 
 from src.models import MODEL_FILE, transform_data
 from src.data import FARM_LIST, update_db, connect_db, get_weather, get_power
+pd.options.mode.chained_assignment = None
 
 MONGO_URI = os.environ['MONGO_URI']
 
@@ -39,15 +40,17 @@ def main():
         model = models[farm]
 
         weather_update['prediction'] = model.predict(X)
+        #convert the columns to type float64 so mongodb can take them
         weather_update.prediction = weather_update.prediction.apply(float)
         weather_update.wind_bearing = weather_update.wind_bearing.apply(float)
         weather_update.uv_index = weather_update.uv_index.apply(float)
+        #rectify negative values
         bad_index = weather_update[weather_update.prediction < 0].index
         weather_update.loc[bad_index, 'prediction'] = 0
-        power_update = get_power(farm, yesterday, today, offset='2D')
-        update_df = pd.merge(weather_update,power_update,left_on='time',right_on='time',how='outer',sort=True)
+        update_db(farm, weather_update, upsert=True)
 
-        update_db(client, farm, update_df, upsert=True)
+        power_update = get_power(farm, yesterday, today)
+        update_db(farm, power_update, upsert=True)
 
     m, s = divmod(time.time()-time_start, 60)
     h, m = divmod(m, 60)

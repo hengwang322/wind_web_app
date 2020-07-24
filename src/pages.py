@@ -17,7 +17,6 @@ from .models import MODEL_FILE, TRAIN_LOG_FILE, transform_data
 
 tz = 'Australia/Sydney'
 
-
 def show_gif(icon='default'):
     if pd.isnull(icon):
         icon = 'default'
@@ -33,18 +32,7 @@ def load_overview_df():
     df.set_index('DUID', inplace=True)
     return df
 
-# @st.cache(hash_funcs={MongoClient: id})
-# def connect():
-#     MONGO_URI = os.environ['MONGO_URI']
-#     client = MongoClient(MONGO_URI)
-#     db = client["wpp"]
-#     return db
 
-
-
-
-
-# @st.cache(persist=True, suppress_st_warning=True, ttl=600)
 def load_data(client, farm, limit, dropna=False):
     with st.spinner("Fetching Data..."):
         df = fetch_data(client, farm, limit=limit)
@@ -64,8 +52,6 @@ def welcome(client):
                 Please choose an option in the sidebar. "<b>Real-time Forecast</b>" will show you today and tomorrow's hourly power predictions. You can view historical data since Jun 2018 in "<b>Historical Data</b>". To evaluate how well the models perform, choose "<b>Model Performance</b>". The effects of predictors on model outcomes are explained in  "<b>Model Explainability</b>". If you want to wish more about the web app and the author, please go to the "<b>About</b>" section.</p>
                 ''', unsafe_allow_html=True)
 
-    show_gif(icon='default')
-
     farms = load_overview_df()
     st.plotly_chart(plot_map(farms), use_container_width=True)
     if st.checkbox('Show raw farm data'):
@@ -75,6 +61,7 @@ def welcome(client):
         st.write(farms[farms.Region == 'SA1'].style.format(format_dict))
         st.markdown('Data is provided by [The Australian Renewable\
                     Energy Mapping Infrastructure Project (AREMI)](https://nationalmap.gov.au/renewables/)')
+    show_gif(icon='default')
 
 
 def forecast(client):
@@ -248,19 +235,23 @@ def explain(client):
 
         with st.spinner("Plotting..."):
             pred = df[-48:].reset_index(drop=True).prediction
-            i = st.slider('Select the hour', min_value=0,
-                          max_value=47, value=0)
-            plt.figure(figsize=(18, 2))
+            i = st.slider('Select the hour', min_value=1,
+                          max_value=48, value=1)
+
             plt.rcParams.update({'font.size': 20})
-            plt.plot(range(0, 48), pred, c='#1e88e5')
-            plt.scatter(i, pred[i], c='#ff0d57', s=300)
-            plt.xlim(0, 47)
-            plt.xticks(np.arange(0, 48, step=6))
-            plt.xlabel('Hour')
+            fig, ax = plt.subplots(figsize=(18, 2))
+            ax.plot(range(1, 49), pred, c='#1e88e5')
+            ax.scatter(i, pred[i-1], c='#ff0d57', s=300)
+            ax.xaxis.set_ticks(np.arange(0, 48, step=6))
+            ax.set_xlim(1, 48)
+            ax.set_xlabel('Hour')
+            ax.tick_params(axis="y", direction="in", pad=-42)
+            ax.get_yaxis().set_ticks([])
+
             st.pyplot(bbox_inches='tight', dpi=150, pad_inches=0.01)
             plt.clf()
 
-            waterfall_plot(expected_val, shap_val[-48:][i],
+            waterfall_plot(expected_val, shap_val[-48:][i-1],
                            feature_names=col_name, max_display=10, show=False)
             st.pyplot(bbox_inches='tight', dpi=150, pad_inches=0)
             plt.clf()
