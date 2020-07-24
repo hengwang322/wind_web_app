@@ -29,7 +29,7 @@ def format_title(string, acronym_list=['UV'], splitter='_'):
     return format_string
 
 
-@st.cache(persist=True, suppress_st_warning=True, ttl=600)
+# @st.cache(persist=True, suppress_st_warning=True, ttl=600)
 def plot_map(farms):
     lastest_time = farms.dropna().iloc[:, 3][0]
     lastest_time = arrow.get(lastest_time).to(tz).format("YYYY-MM-DD HH:mm")
@@ -46,7 +46,7 @@ def plot_map(farms):
                             text='Station Name', size='Power (MW)',
                             color="Power (MW)",
                             color_continuous_scale=plotly.colors.sequential.haline,
-                            center={'lat': -35.7, 'lon': 137.5},
+                            center={'lat': -35.5, 'lon': 137.5},
                             title='Wind Power Generation in South Australia')
 
     fig.update_layout(annotations=[go.layout.Annotation(
@@ -64,7 +64,7 @@ def plot_map(farms):
     return fig
 
 
-@st.cache(persist=True, suppress_st_warning=True, ttl=600)
+# @st.cache(persist=True, suppress_st_warning=True, ttl=600)
 def plot_forecast(df, farm):
     farm_name = FARM_NAME_LIST[FARM_LIST.index(farm)]
     fig = go.Figure()
@@ -101,7 +101,7 @@ def plot_forecast(df, farm):
     return fig
 
 
-@st.cache(persist=True, suppress_st_warning=True, ttl=600)
+# @st.cache(persist=True, suppress_st_warning=True, ttl=600)
 def plot_historical(df, farm):
     farm_name = FARM_NAME_LIST[FARM_LIST.index(farm)]
     fig = go.Figure()
@@ -122,7 +122,7 @@ def plot_historical(df, farm):
 
 
 # //todo
-@st.cache(persist=True, suppress_st_warning=True, allow_output_mutation=True, ttl=600)
+# @st.cache(persist=True, suppress_st_warning=True, allow_output_mutation=True, ttl=600)
 def plot_error(df, farm):
     farm_name = FARM_NAME_LIST[FARM_LIST.index(farm)]
     fig = go.Figure()
@@ -144,7 +144,7 @@ def plot_error(df, farm):
     return fig
 
 
-@st.cache(persist=True, suppress_st_warning=True, ttl=600)
+# @st.cache(persist=True, suppress_st_warning=True, ttl=600)
 def plot_weather(df, farm):
     fig = make_subplots(rows=8, cols=1)
 

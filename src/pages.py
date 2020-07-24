@@ -9,13 +9,13 @@ from sklearn.metrics import mean_squared_error as mse
 from xgboost import DMatrix, XGBRegressor
 from shap import summary_plot, waterfall_plot
 import streamlit as st
+from pymongo import MongoClient
 
 from .plot import plot_map, plot_forecast, plot_weather, plot_historical, plot_error, format_title
-from .data import FARM_LIST, FARM_NAME_LIST, connect_db, fetch_data
+from .data import FARM_LIST, FARM_NAME_LIST, fetch_data
 from .models import MODEL_FILE, TRAIN_LOG_FILE, transform_data
 
 tz = 'Australia/Sydney'
-
 
 def show_gif(icon='default'):
     if pd.isnull(icon):
@@ -33,26 +33,24 @@ def load_overview_df():
     return df
 
 
-@st.cache(persist=True, suppress_st_warning=True, ttl=600)
-def load_data(farm, limit, dropna=False):
-    df = fetch_data(farm, limit=limit)
-    # all time displayed in the web app is converted to AEST
-    df.time = df.time.apply(lambda t: arrow.get(
-        t).to(tz).format('YYYY-MM-DD HH:mm:SS'))
-    if dropna:
-        df.dropna(inplace=True)
+def load_data(client, farm, limit, dropna=False):
+    with st.spinner("Fetching Data..."):
+        df = fetch_data(client, farm, limit=limit)
+        # all time displayed in the web app is converted to AEST
+        df.time = df.time.apply(lambda t: arrow.get(
+            t).to(tz).format('YYYY-MM-DD HH:mm:SS'))
+        if dropna:
+            df.dropna(inplace=True)
     return df
 
 
-def welcome():
+def welcome(client):
     st.header('Welcome to Wind Power Predictions')
     st.markdown('''<p style="text-align:justify;">
                 This a demo for medium-range wind power predictions for major wind farms in South Australia.</p>
                 <p style="text-align:justify;">
                 Please choose an option in the sidebar. "<b>Real-time Forecast</b>" will show you today and tomorrow's hourly power predictions. You can view historical data since Jun 2018 in "<b>Historical Data</b>". To evaluate how well the models perform, choose "<b>Model Performance</b>". The effects of predictors on model outcomes are explained in  "<b>Model Explainability</b>". If you want to wish more about the web app and the author, please go to the "<b>About</b>" section.</p>
                 ''', unsafe_allow_html=True)
-
-    show_gif(icon='default')
 
     farms = load_overview_df()
     st.plotly_chart(plot_map(farms), use_container_width=True)
@@ -63,12 +61,13 @@ def welcome():
         st.write(farms[farms.Region == 'SA1'].style.format(format_dict))
         st.markdown('Data is provided by [The Australian Renewable\
                     Energy Mapping Infrastructure Project (AREMI)](https://nationalmap.gov.au/renewables/)')
+    show_gif(icon='default')
 
 
-def forecast():
+def forecast(client):
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
-    df = load_data(farm, limit=24*4, dropna=False)
+    df = load_data(client, farm, limit=24*4, dropna=False)
 
     latest = df[df.actual.isna()].index[-1]+1
 
@@ -110,7 +109,7 @@ def forecast():
                     ''', unsafe_allow_html=True)
 
 
-def historical():
+def historical(client):
     range_dict = {'1 Week': 7*24, '1 Month': 30*24, '3 Months': 90 *
                   24, '6 Months': 180*24, '1 Year': 365*24, 'All time': None}
     range_select = st.selectbox(
@@ -118,7 +117,7 @@ def historical():
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
     show_gif(icon='default')
-    df = load_data(farm, limit=range_dict[range_select], dropna=True)
+    df = load_data(client, farm, limit=range_dict[range_select], dropna=True)
 
     st.plotly_chart(plot_historical(df, farm), use_container_width=True)
 
@@ -140,11 +139,11 @@ def historical():
                      ''', unsafe_allow_html=True)
 
 
-def performance():
+def performance(client):
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
     show_gif(icon='default')
-    df = load_data(farm, limit=30*24, dropna=True)
+    df = load_data(client, farm, limit=30*24, dropna=True)
     error = df.copy(deep=True)
     # todo: calculate from database instead
     error['date'] = pd.to_datetime(error.time).dt.date
@@ -190,7 +189,7 @@ def load_models():
     return pickle.load(open(MODEL_FILE, "rb"))
 
 
-def explain():
+def explain(client):
     st.header('Model Explainability')
     st.subheader(
         'Use SHAP to explain the output of the machine learning model')
@@ -203,7 +202,7 @@ def explain():
     farm_select = st.sidebar.selectbox('Select a farm', FARM_NAME_LIST)
     show_gif(icon='default')
     farm = FARM_LIST[FARM_NAME_LIST.index(farm_select)]
-    df = load_data(farm, limit=200)
+    df = load_data(client, farm, limit=200)
     models = load_models()
     model = models[farm]
     with st.spinner("Running Calculations..."):
@@ -236,25 +235,29 @@ def explain():
 
         with st.spinner("Plotting..."):
             pred = df[-48:].reset_index(drop=True).prediction
-            i = st.slider('Select the hour', min_value=0,
-                          max_value=47, value=0)
-            plt.figure(figsize=(18, 2))
+            i = st.slider('Select the hour', min_value=1,
+                          max_value=48, value=1)
+
             plt.rcParams.update({'font.size': 20})
-            plt.plot(range(0, 48), pred, c='#1e88e5')
-            plt.scatter(i, pred[i], c='#ff0d57', s=300)
-            plt.xlim(0, 47)
-            plt.xticks(np.arange(0, 48, step=6))
-            plt.xlabel('Hour')
+            fig, ax = plt.subplots(figsize=(18, 2))
+            ax.plot(range(1, 49), pred, c='#1e88e5')
+            ax.scatter(i, pred[i-1], c='#ff0d57', s=300)
+            ax.xaxis.set_ticks(np.arange(0, 48, step=6))
+            ax.set_xlim(1, 48)
+            ax.set_xlabel('Hour')
+            ax.tick_params(axis="y", direction="in", pad=-42)
+            ax.get_yaxis().set_ticks([])
+
             st.pyplot(bbox_inches='tight', dpi=150, pad_inches=0.01)
             plt.clf()
 
-            waterfall_plot(expected_val, shap_val[-48:][i],
+            waterfall_plot(expected_val, shap_val[-48:][i-1],
                            feature_names=col_name, max_display=10, show=False)
             st.pyplot(bbox_inches='tight', dpi=150, pad_inches=0)
             plt.clf()
 
 
-def about():
+def about(client):
     st.markdown('''
     <h1><a href="https://drive.google.com/file/d/14tvyZ9Lt3peM-9B2ZbAmw6HeRacYUzgW/view" target="_blank">🎐</a>Wind Power Prediction: About</h1>
     <h3>The Project</h3>
