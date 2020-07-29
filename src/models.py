@@ -12,9 +12,9 @@ from sklearn.metrics import mean_squared_error as mse
 from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
-from .data import fetch_data, FARM_LIST, connect_db
+from src.data import fetch_data, FARM_LIST, connect_db
 
-MODEL_FILE = os.path.join("models", "models.pkl")
+MODEL_FILE = os.path.join('models', 'models.pkl')
 TRAIN_LOG_FILE = os.path.join('models', 'train.log')
 MONGO_URI = os.environ['MONGO_URI']
 
@@ -25,11 +25,12 @@ space = {'max_depth': hp.quniform("max_depth", 3, 15, 1),
          'reg_lambda': hp.uniform('reg_lambda', 0, 1),
          'colsample_bytree': hp.uniform('colsample_bytree', 0.5, 1),
          'min_child_weight': hp.quniform('min_child_weight', 0, 10, 1),
-         'n_estimators': hp.quniform("n_estimators", 100, 200, 25)
+         'n_estimators': hp.quniform('n_estimators', 100, 200, 25),
          }
 
 
 def split_data(X, y, seed, test_size=0.1, val_size=0.1):
+    """Split data to train, validation, test sets."""
     X_train_, X_test, y_train_, y_test = train_test_split(
         X, y, test_size=test_size, random_state=seed)
     X_train, X_val, y_train, y_val = train_test_split(
@@ -39,6 +40,7 @@ def split_data(X, y, seed, test_size=0.1, val_size=0.1):
 
 
 def transform_data(original_df):
+    """Add features and transform original df to X & y for modelling."""
     X_COL = ['cloud_cover', 'dew_point', 'humidity', 'ozone',
              'precipitation', 'pressure', 'temperature',
              'uv_index', 'visibility', 'wind_gust', 'wind_speed',
@@ -66,6 +68,7 @@ def transform_data(original_df):
 
 
 def best_model_from_trials(trials):
+    """Extract and return the best model object from trails."""
     valid_trial_list = [trial for trial in trials
                         if STATUS_OK == trial['result']['status']]
     losses = [float(trial['result']['loss']) for trial in valid_trial_list]
@@ -76,6 +79,7 @@ def best_model_from_trials(trials):
 
 
 def optimize_model(farm, max_evals, timeout):
+    """Use Hyperopt to optimize hyperparams, return best model."""
     time_start = time.time()
     # ingest data
     client = connect_db(MONGO_URI)
@@ -87,6 +91,7 @@ def optimize_model(farm, max_evals, timeout):
 
     # tune paramaters
     def objective(space):
+        """Define Hyperopt objectives to minimize MSE."""
         model = XGBRegressor(n_estimators=int(space['n_estimators']),
                              max_depth=int(space['max_depth']),
                              gamma=space['gamma'],
@@ -99,8 +104,7 @@ def optimize_model(farm, max_evals, timeout):
                   eval_set=[(X_train, y_train), (X_val, y_val)],
                   eval_metric="rmse",
                   early_stopping_rounds=5,
-                  verbose=False
-                  )
+                  verbose=False)
 
         pred = model.predict(X_val)
         return {'loss': mse(y_val, pred), 'status': STATUS_OK, 'model': model}
@@ -114,13 +118,12 @@ def optimize_model(farm, max_evals, timeout):
                 timeout=timeout)
     model = best_model_from_trials(trials)
 
+    # logging
     m, s = divmod(time.time()-time_start, 60)
     h, m = divmod(m, 60)
     runtime = "%03d:%02d:%02d" % (h, m, s)
     dt_range = f"{df.time.iloc[0]}~{df.time.iloc[-1]}"
     trial_no = len(trials.trials)
-
-    # logging
     header = ['unique_id', 'timestamp', 'model_name', 'runtime', 'trials',
               'dt_range_UTC', 'best_param', 'test_rmse', 'seed']
     write_header = False
@@ -130,15 +133,24 @@ def optimize_model(farm, max_evals, timeout):
         writer = csv.writer(csvfile, delimiter='\t')
         if write_header:
             writer.writerow(header)
-
-        to_write = map(str, [uuid.uuid4(), int(time.time()), farm, runtime, trial_no,
-                             dt_range, best, mse(model.predict(X_test), y_test, squared=False), seed])
+        to_write = map(str, [
+                            uuid.uuid4(), 
+                            int(time.time()), 
+                            farm, 
+                            runtime, 
+                            trial_no,
+                            dt_range, 
+                            best, 
+                            mse(model.predict(X_test), y_test, squared=False), 
+                            seed,
+                            ])
         writer.writerow(to_write)
 
     return model
 
 
 def train_models(train_list, max_evals=50, timeout=300, dump=True):
+    """Train models for all farms, returns a dict of all model objects."""
     models = dict()
 
     for farm in train_list:

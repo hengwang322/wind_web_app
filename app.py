@@ -20,7 +20,7 @@ def main():
         'Historical Data': pages.historical,
         'Model Performance': pages.performance,
         'Model Explainability': pages.explain,
-        'About': pages.about
+        'About': pages.about,
     }
     page_select = st.sidebar.radio("Go to...", list(PAGES.keys()))
 

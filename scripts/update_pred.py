@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import os
 import pickle
 from pathlib import Path
@@ -14,6 +12,7 @@ pd.options.mode.chained_assignment = None
 
 MONGO_URI = os.environ['MONGO_URI']
 
+
 def main():
     time_start = time.time()
     client = connect_db(MONGO_URI)
@@ -25,11 +24,11 @@ def main():
         X, _ = transform_data(df)
         model = models[farm]
 
-        update_df = df[['time','prediction']]
+        update_df = df[['time', 'prediction']]
         update_df['prediction'] = model.predict(X)
-        #convert the columns to type float64 so mongodb can take them
+        # convert the columns to type float64 so mongodb can take them
         update_df.prediction = update_df.prediction.apply(float)
-        #rectify negative values
+        # rectify negative values
         bad_index = update_df[update_df.prediction < 0].index
         update_df.loc[bad_index, 'prediction'] = 0
         update_db(farm, update_df, upsert=True)

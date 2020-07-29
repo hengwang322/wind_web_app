@@ -11,19 +11,25 @@ from pymongo import MongoClient, UpdateOne
 MONGO_URI = os.environ['MONGO_URI']
 DARKSKY_KEY = os.environ['DARKSKY_KEY']
 
-FARM_LIST = ['BLUFF1', 'CATHROCK', 'CLEMGPWF', 'HALLWF2', 'HDWF2', 'LKBONNY2', 'MTMILLAR',
-             'NBHWF1', 'SNOWNTH1', 'SNOWSTH1', 'STARHLWF', 'WATERLWF', 'WPWF']
-FARM_NAME_LIST = ['Bluff Wind Farm', 'Cathedral Rocks Wind Farm', 'Clements Gap Wind Farm',
-                  'Hallett 2 Wind Farm', 'Hornsdale Wind Farm 2', 'Lake Bonney Stage 2 Windfarm',
-                  'Mt Millar Wind Farm', 'North Brown Hill Wind Farm', 'Snowtown Wind Farm Stage 2 North',
-                  'Snowtown South Wind Farm', 'Starfish Hill Wind Farm', 'Waterloo Wind Farm', 'Wattle Point Wind Farm']
+FARM_LIST = ['BLUFF1', 'CATHROCK', 'CLEMGPWF', 'HALLWF2', 'HDWF2', 
+             'LKBONNY2', 'MTMILLAR', 'NBHWF1', 'SNOWNTH1', 'SNOWSTH1', 
+             'STARHLWF', 'WATERLWF', 'WPWF']
+FARM_NAME_LIST = ['Bluff Wind Farm', 'Cathedral Rocks Wind Farm', 
+                  'Clements Gap Wind Farm','Hallett 2 Wind Farm', 
+                  'Hornsdale Wind Farm 2', 'Lake Bonney Stage 2 Windfarm', 
+                  'Mt Millar Wind Farm', 'North Brown Hill Wind Farm', 
+                  'Snowtown Wind Farm Stage 2 North', 
+                  'Snowtown South Wind Farm', 'Starfish Hill Wind Farm', 
+                  'Waterloo Wind Farm', 'Wattle Point Wind Farm']
 
 
 def connect_db(MONGO_URI):
+    """Connect to MongoDB & return the client object."""
     return MongoClient(MONGO_URI)
 
 
 def fetch_data(client, farm, limit):
+    """Get the last N row of data."""
     time_start = time.time()
     db = client["wpp"]
     print(f"Fetching data for {farm}...", end="", flush=True)
@@ -45,6 +51,7 @@ def fetch_data(client, farm, limit):
 
 
 def update_db(farm, update_df, upsert=True):
+    """Update database via bulk write."""
     if 'time' in update_df.columns:
         update_df = update_df.rename(columns={'time': '_id'})
     client = connect_db(MONGO_URI)
@@ -57,11 +64,12 @@ def update_db(farm, update_df, upsert=True):
     db[farm].bulk_write(ops)
 
 
-def fill_val(df, offset):
-    '''
-    Fill missing value with the mean of the -24h and +24h data
-    offset is the rows for the +24h/-24h, for 1h interval is 24, for 5min interval is 288
-    '''
+def fill_val(raw, offset):
+    """Fill missing value with the mean of the -24h and +24h data.
+    offset is the rows for the +24h/-24h, for 1h interval is 24, 
+    for 5min interval is 288.
+    """
+    df = raw.copy(deep=True)
     for item in df.drop('time', axis=1).columns:
         for i in df[df.isna().any(1)].index:
             # Take into consideration if missing values don't have -24h and +24h data
@@ -86,9 +94,11 @@ def fill_val(df, offset):
                 v = np.nan
 
             df.loc[i, item] = v
+    return df
 
 
 def get_power(farm, local_start_dt, local_end_dt):
+    """Get power data & convert it to 1h format."""
     tz = 'Australia/Adelaide'
     utc_start_dt = pd.to_datetime(
         local_start_dt).tz_localize(tz).tz_convert('UTC')
@@ -108,7 +118,7 @@ def get_power(farm, local_start_dt, local_end_dt):
                                   name='time')
 
     raw = raw.set_index('time').reindex(reference_idx).reset_index()
-    fill_val(raw, offset=288)
+    raw = fill_val(raw, offset=288)
 
     # Slice the raw df to a desired range
     power_5min = raw[(raw['time'] >= utc_start_dt)
@@ -127,14 +137,10 @@ def get_power(farm, local_start_dt, local_end_dt):
 
 
 def get_weather(farm, local_start_dt, local_end_dt):
-    '''
-    Get the weather data from Darksky, given datetime range
-    local_start_dt and local_end_dt are strings in the format of %Y-%m-%d %H:%M:%S
-    return a dataframe with hourly weather data 
-    '''
-
-    dt_format = 'YYYY-MM-DD HH:mm:ss'
-    tz = 'Australia/Adelaide'
+    """Get weather data from Darksky.
+    local_start_dt and local_end_dt are strings in format of %Y-%m-%d %H:%M:%S.
+    Return a dataframe with hourly weather data.
+    """
     overview = pd.read_csv('https://services.aremi.data61.io/aemo/v6/csv/wind')
     overview.set_index('DUID', inplace=True)
     location = f"{overview.loc[farm,'Lat']},{overview.loc[farm,'Lon']}"
@@ -148,8 +154,6 @@ def get_weather(farm, local_start_dt, local_end_dt):
         # Construct the API url for each day
         time = dt.strftime("%Y-%m-%d")+'T00:00:00'
         dsapi = f'https://api.darksky.net/forecast/{DARKSKY_KEY}/{location},{time}{flags}'
-
-        # Load the json from api and turns to df, attach each day's df to the master weather df
         with urllib.request.urlopen(dsapi) as url:
             data = json.loads(url.read().decode())
         try:
@@ -159,20 +163,22 @@ def get_weather(farm, local_start_dt, local_end_dt):
         weather = pd.concat([weather, df], axis=0, sort=True)
 
     weather['time'] = pd.to_datetime(weather['time'], unit='s')
+    weather = weather[['time', 'cloudCover', 'dewPoint', 'humidity', 'ozone', 
+                       'precipIntensity', 'pressure', 'icon', 'temperature',  
+                       'uvIndex', 'visibility', 'windBearing', 'windGust', 
+                       'windSpeed']]
 
-    weather = weather[['time', 'cloudCover', 'dewPoint', 'humidity', 'ozone', 'precipIntensity', 'pressure', 'icon',
-                       'temperature',  'uvIndex', 'visibility', 'windBearing', 'windGust', 'windSpeed']]
-
-    weather.columns = ['time', 'cloud_cover', 'dew_point', 'humidity', 'ozone', 'precipitation', 'pressure', 'icon',
-                       'temperature',  'uv_index', 'visibility', 'wind_bearing', 'wind_gust', 'wind_speed']
-
+    weather.columns = ['time', 'cloud_cover', 'dew_point', 'humidity', 'ozone', 
+                       'precipitation', 'pressure', 'icon', 'temperature',  
+                       'uv_index', 'visibility', 'wind_bearing', 'wind_gust', 
+                       'wind_speed']
     # make sure there's no missing point in datetime range
     reference_idx = pd.date_range(start=weather.iloc[0].time,
                                   end=weather.iloc[-1].time,
                                   freq="1H",
                                   name='time')
     weather = weather.set_index('time').reindex(reference_idx).reset_index()
-    fill_val(weather, offset=24)
+    weather = fill_val(weather, offset=24)
 
     weather.time = weather.time.dt.strftime('%Y-%m-%d %H:%M:%S')
     weather.wind_bearing = weather.wind_bearing.apply(float)
