@@ -4,6 +4,7 @@ from src.data import FARM_LIST
 
 def main():
     models = train_models(FARM_LIST)
+    return models
 
 
 if __name__ == '__main__':
