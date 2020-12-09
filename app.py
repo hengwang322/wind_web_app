@@ -13,6 +13,8 @@ def connect():
     return client
 
 def main():
+    st.set_page_config(page_title='Wind Power Prediction', page_icon='🎐')
+
     st.sidebar.subheader("Navigation")
     PAGES = {
         'Welcome': pages.welcome,
