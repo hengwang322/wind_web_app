@@ -12,8 +12,20 @@ def connect():
     client = MongoClient(MONGO_URI)
     return client
 
+
 def main():
     st.set_page_config(page_title='Wind Power Prediction', page_icon='🎐')
+
+    st.markdown(
+        """
+    <style>
+    .css-1aumxhk {
+    padding: 0
+    }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
     st.sidebar.subheader("Navigation")
     PAGES = {
