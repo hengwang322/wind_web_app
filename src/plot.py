@@ -72,21 +72,25 @@ def plot_forecast(df, farm):
         df['prediction'], 2), name="Prediction"))
 
     title_text = f'Hourly Wind Power Prediction at {farm_name}'
-    latest = df[df.actual.isna()].index[-1]
+    latest = df[df.actual.isna()].index[-1]+1
+    try:
+        _ = df.loc[latest, 'temperature']
+    except:
+        latest = df.index[-1]
 
     fig.update_xaxes(nticks=12)
     fig.add_shape(dict(type="line",
                        yref="paper",
-                       x0=df.loc[latest+1, 'time'],
+                       x0=df.loc[latest, 'time'],
                        y0=0,
-                       x1=df.loc[latest+1, 'time'],
+                       x1=df.loc[latest, 'time'],
                        y1=1,
                        line=dict(color="Grey", width=1.5, dash="dash")))
-    fig.add_annotation(x=df.loc[latest+10, 'time'],
+    fig.add_annotation(x=df.loc[latest, 'time'],
                        yref="paper",
                        y=1.07,
                        showarrow=False,
-                       text=f"Last Update {df.loc[latest,'time'][:16]} AEST")
+                       text=f"Last Update {df.loc[latest-1,'time'][:16]} AEST")
     fig.update_layout(hovermode='x',
                       title_text=title_text,
                       title_x=0.5,
