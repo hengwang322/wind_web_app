@@ -91,6 +91,10 @@ def forecast(client):
     df = load_data(client, farm, limit=24*4, dropna=False)
 
     latest = df[df.actual.isna()].index[-1]+1
+    try:
+        _ = df.loc[latest, 'temperature']
+    except:
+        latest = df.index[-1]
 
     show_gif(icon=df.loc[latest, 'icon'])
 
