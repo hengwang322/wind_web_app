@@ -15,6 +15,7 @@ from src.data import FARM_LIST, FARM_NAME_LIST, fetch_data
 from src.models import MODEL_FILE, TRAIN_LOG_FILE, transform_data
 
 tz = 'Australia/Sydney'
+st.set_option('deprecation.showPyplotGlobalUse', False)
 
 
 def show_gif(icon='default'):
@@ -75,10 +76,10 @@ def welcome(client):
 
     farms = load_overview_df()
     st.plotly_chart(plot_map(farms), use_container_width=True)
-    if st.checkbox('Show raw farm data'):
-        st.write(df_float_formatter(farms[farms.Region == 'SA1']))
-        st.markdown(
-            """Data is provided by [The Australian Renewable Energy Mapping 
+    raw_farm_data = st.beta_expander('Show raw farm data')
+    raw_farm_data.write(df_float_formatter(farms[farms.Region == 'SA1']))
+    raw_farm_data.markdown(
+        """Data is provided by [The Australian Renewable Energy Mapping 
             Infrastructure Project (AREMI)]
             (https://nationalmap.gov.au/renewables/)""")
     show_gif(icon='default')
@@ -90,6 +91,10 @@ def forecast(client):
     df = load_data(client, farm, limit=24*4, dropna=False)
 
     latest = df[df.actual.isna()].index[-1]+1
+    try:
+        _ = df.loc[latest, 'temperature']
+    except:
+        latest = df.index[-1]
 
     show_gif(icon=df.loc[latest, 'icon'])
 
@@ -110,34 +115,18 @@ def forecast(client):
 
     st.plotly_chart(plot_forecast(df, farm), use_container_width=True)
 
-    if st.checkbox('Plot weather data'):
-        st.plotly_chart(plot_weather(df, farm),
-                        use_container_width=True)
-        st.markdown(
-            """Weather data is provided by [**Dark Sky API**]
-            (https://darksky.net/poweredby/)""")
-    if st.checkbox('Show raw data'):
-        st.write(df_float_formatter(df.drop(['icon'], axis=1)))
-        st.markdown(
-            """Weather data is provided by [**Dark Sky API**]
-            (https://darksky.net/poweredby/)""")
+    weather_data = st.beta_expander('Show weather data')
+    weather_data.plotly_chart(plot_weather(df, farm),
+                              use_container_width=True)
+    weather_data.markdown(
+        """Weather data is provided by [**Dark Sky API**]
+        (https://darksky.net/poweredby/)""")
 
-    if st.button('Tooltip'):
-        st.markdown(
-            """<p style="text-align:justify;">
-            There are various buttons on the top-left corner of the graph. 
-            You can use them to pan, zoom or download the graph, or toggle 
-            what to show when hovering over the traces. You can also click 
-            on the legend of a trace to hide it.</p>""",
-            unsafe_allow_html=True)
-
-    if st.button('About the Data'):
-        st.markdown(
-            """<p style="text-align:justify;">
-            All data is collected in its own timezone, which is updated 
-            hourly. Power data is the average output of the wind farm 
-            within the hour.</p>""",
-            unsafe_allow_html=True)
+    raw_data = st.beta_expander('Show raw data')
+    raw_data.write(df_float_formatter(df.drop(['icon'], axis=1)))
+    raw_data.markdown(
+        """Weather data is provided by [**Dark Sky API**]
+        (https://darksky.net/poweredby/)""")
 
 
 def historical(client):
@@ -155,26 +144,18 @@ def historical(client):
     df = load_data(client, farm, limit=range_dict[range_select], dropna=True)
     st.plotly_chart(plot_historical(df, farm), use_container_width=True)
 
-    if st.checkbox('Plot historical weather data'):
-        st.plotly_chart(plot_weather(df, farm), use_container_width=True)
-        st.markdown(
-            """Weather data is provided by [**Dark Sky API**]
-            (https://darksky.net/poweredby/)""")
-    if st.checkbox('Show raw historical data'):
-        st.write(df_float_formatter(
-            df.drop(['icon'], axis=1).reset_index(drop=True)))
-        st.markdown(
-            """Weather data is provided by [**Dark Sky API**]
-            (https://darksky.net/poweredby/)""")
+    weather_data = st.beta_expander('Show historical weather data')
+    weather_data.plotly_chart(plot_weather(df, farm), use_container_width=True)
+    weather_data.markdown(
+        """Weather data is provided by [**Dark Sky API**]
+        (https://darksky.net/poweredby/)""")
 
-    if st.button('Tooltip'):
-        st.markdown(
-            """<p style="text-align:justify;">
-            There are various buttons on the top-left corner of the graph. 
-            You can use them to pan, zoom or download the graph, or toggle 
-            what to show when hovering over the traces. You can also click 
-            on the legend of a trace to hide it.</p>""",
-            unsafe_allow_html=True)
+    raw_data = st.beta_expander('Show raw historical data')
+    raw_data.write(df_float_formatter(
+        df.drop(['icon'], axis=1).reset_index(drop=True)))
+    raw_data.markdown(
+        """Weather data is provided by [**Dark Sky API**]
+        (https://darksky.net/poweredby/)""")
 
 
 def performance(client):
@@ -214,8 +195,8 @@ def performance(client):
         ahead and farm owners profit from energy bidding for the next day.</p>""",
         unsafe_allow_html=True)
 
-    if st.checkbox("Show log for past trainings"):
-        st.write(train_farm)
+    log = st.beta_expander('Show log for past trainings')
+    log.write(train_farm)
 
 
 @st.cache(persist=True, suppress_st_warning=True, hash_funcs={XGBRegressor: id})
@@ -225,8 +206,6 @@ def load_models():
 
 def explain(client):
     st.header('Model Explainability')
-    st.subheader(
-        'Use SHAP to explain the output of the machine learning model')
     st.markdown(
         """<p style="text-align:justify;">
         Model explainability is the ability to explain the internal mechanics 
@@ -252,62 +231,72 @@ def explain(client):
         shap_val = np.delete(shap_val, obj=-1, axis=1)
 
     col_name = [format_title(col) for col in list(X.columns)]
-    st.subheader('Feature importance based on SHAP value')
-    if st.checkbox('Show more...', key='importance', value=True):
-        st.markdown(
-            """<p style="text-align:justify;">
+
+    importance = st.beta_expander(
+        'Feature importance based on SHAP value', expanded=True)
+    importance.markdown(
+        """<p style="text-align:justify;">
+        The following plot summarizes feature importance based on SHAP 
             The following plot summarizes feature importance based on SHAP 
+        The following plot summarizes feature importance based on SHAP 
+        values (i.e. how much each feature changes the model outcome 
             values (i.e. how much each feature changes the model outcome 
+        values (i.e. how much each feature changes the model outcome 
+        when conditioning on that feature). The features are sorted by 
             when conditioning on that feature). The features are sorted by 
+        when conditioning on that feature). The features are sorted by 
+        the sum of the magnitudes of SHAP values. The colour represents 
             the sum of the magnitudes of SHAP values. The colour represents 
-            feature value, while red is high and blue is low.<br>
+        the sum of the magnitudes of SHAP values. The colour represents 
+        feature value, while red is high and blue is low.<br>
+        For example, if a red (high feature value) data point shows a 
             For example, if a red (high feature value) data point shows a 
-            positive SHAP value, it increases the predicted value; if the 
+        For example, if a red (high feature value) data point shows a 
+        positive SHAP value, it increases the predicted value; if the 
+        SHAP value is negative, it lowers the predicted value. A point 
             SHAP value is negative, it lowers the predicted value. A point 
+        SHAP value is negative, it lowers the predicted value. A point 
+        far away from zero point also has a higher impact (either 
             far away from zero point also has a higher impact (either 
-            negative or positive) than that is near zero point.</p>""",
-            unsafe_allow_html=True)
+        far away from zero point also has a higher impact (either 
+        negative or positive) than that is near zero point.</p>""",
+        unsafe_allow_html=True)
 
-        with st.spinner("Plotting..."):
-            summary_plot(shap_val, X, show=False, feature_names=col_name)
-            st.pyplot(bbox_inches='tight', dpi=150)
-            plt.clf()
+    summary_plot(shap_val, X, show=False, feature_names=col_name)
+    importance.pyplot(bbox_inches='tight', dpi=150)
 
-    st.subheader('Feature contribution for individual prediction')
-    if st.checkbox('Show more...', key='contribution'):
-        st.markdown(
-            """<p style="text-align:justify;">
-            The waterfall plot below demonstrates how much each feature 
-            contributes to pushing the model from the baseline value 
-            (indicated by <i>E[f(X)]</i>) to model output (indicated 
-            by <i>f(X)</i>) in an intuitive manner.<br>
-            The plot can show all the individual predictions for today 
-            & tomorrow (48 h in total). Use the slider below to choose 
-            which hour's prediction you'd like to view.</p>""",
-            unsafe_allow_html=True)
+    contribution = st.beta_expander(
+        'Feature contribution for individual prediction')
+    contribution.markdown(
+        """<p style="text-align:justify;">
+        The waterfall plot below demonstrates how much each feature 
+        contributes to pushing the model from the baseline value 
+        (indicated by <i>E[f(X)]</i>) to model output (indicated 
+        by <i>f(X)</i>) in an intuitive manner.<br>
+        The plot can show all the individual predictions for today 
+        & tomorrow (48 h in total). Use the slider below to choose 
+        which hour's prediction you'd like to view.</p>""",
+        unsafe_allow_html=True)
 
-        with st.spinner("Plotting..."):
-            pred = df[-48:].reset_index(drop=True).prediction
-            i = st.slider('Select the hour', min_value=1,
-                          max_value=48, value=1)
+    pred = df[-48:].reset_index(drop=True).prediction
+    i = contribution.slider('Select the hour', min_value=1,
+                            max_value=48, value=24)
 
-            plt.rcParams.update({'font.size': 20})
-            fig, ax = plt.subplots(figsize=(18, 2))
-            ax.plot(range(1, 49), pred, c='#1e88e5')
-            ax.scatter(i, pred[i-1], c='#ff0d57', s=300)
-            ax.xaxis.set_ticks(np.arange(0, 48, step=6))
-            ax.set_xlim(1, 48)
-            ax.set_xlabel('Hour')
-            ax.tick_params(axis="y", direction="in", pad=-42)
-            ax.get_yaxis().set_ticks([])
+    plt.rcParams.update({'font.size': 20})
+    fig, ax = plt.subplots(figsize=(18, 2))
+    ax.plot(range(1, 49), pred, c='#1e88e5')
+    ax.scatter(i, pred[i-1], c='#ff0d57', s=300)
+    ax.xaxis.set_ticks(np.arange(0, 48, step=6))
+    ax.set_xlim(1, 48)
+    ax.set_xlabel('Hour')
+    ax.tick_params(axis="y", direction="in", pad=-42)
+    ax.get_yaxis().set_ticks([])
 
-            st.pyplot(bbox_inches='tight', dpi=150, pad_inches=0.01)
-            plt.clf()
+    contribution.pyplot(bbox_inches='tight', dpi=150, pad_inches=0.01)
 
-            waterfall_plot(expected_val, shap_val[-48:][i-1],
-                           feature_names=col_name, max_display=10, show=False)
-            st.pyplot(bbox_inches='tight', dpi=150, pad_inches=0)
-            plt.clf()
+    waterfall_plot(expected_val, shap_val[-48:][i-1],
+                   feature_names=col_name, max_display=10, show=False)
+    contribution.pyplot(bbox_inches='tight', dpi=150, pad_inches=0)
 
 
 def about(client):

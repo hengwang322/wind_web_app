@@ -130,7 +130,7 @@ def get_power(farm, local_start_dt, local_end_dt):
 
     # aggregate by the hour
     power_1h = power_5min.set_index('time')['actual'].resample(
-        '60min', base=30, label='left').mean().reset_index()
+        '60min', offset='30min', label='left').mean().reset_index()
     power_1h.time = power_1h.time.dt.strftime('%Y-%m-%d %H:%M:%S')
 
     return power_1h
