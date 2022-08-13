@@ -76,7 +76,7 @@ def welcome(client):
 
     farms = load_overview_df()
     st.plotly_chart(plot_map(farms), use_container_width=True)
-    raw_farm_data = st.beta_expander('Show raw farm data')
+    raw_farm_data = st.expander('Show raw farm data')
     raw_farm_data.write(df_float_formatter(farms[farms.Region == 'SA1']))
     raw_farm_data.markdown(
         """Data is provided by [The Australian Renewable Energy Mapping 
@@ -115,14 +115,14 @@ def forecast(client):
 
     st.plotly_chart(plot_forecast(df, farm), use_container_width=True)
 
-    weather_data = st.beta_expander('Show weather data')
+    weather_data = st.expander('Show weather data')
     weather_data.plotly_chart(plot_weather(df, farm),
                               use_container_width=True)
     weather_data.markdown(
         """Weather data is provided by [**Dark Sky API**]
         (https://darksky.net/poweredby/)""")
 
-    raw_data = st.beta_expander('Show raw data')
+    raw_data = st.expander('Show raw data')
     raw_data.write(df_float_formatter(df.drop(['icon'], axis=1)))
     raw_data.markdown(
         """Weather data is provided by [**Dark Sky API**]
@@ -144,13 +144,13 @@ def historical(client):
     df = load_data(client, farm, limit=range_dict[range_select], dropna=True)
     st.plotly_chart(plot_historical(df, farm), use_container_width=True)
 
-    weather_data = st.beta_expander('Show historical weather data')
+    weather_data = st.expander('Show historical weather data')
     weather_data.plotly_chart(plot_weather(df, farm), use_container_width=True)
     weather_data.markdown(
         """Weather data is provided by [**Dark Sky API**]
         (https://darksky.net/poweredby/)""")
 
-    raw_data = st.beta_expander('Show raw historical data')
+    raw_data = st.expander('Show raw historical data')
     raw_data.write(df_float_formatter(
         df.drop(['icon'], axis=1).reset_index(drop=True)))
     raw_data.markdown(
@@ -176,7 +176,7 @@ def performance(client):
     train_farm = train_log[train_log['model_name'] == farm]
     train_farm.reset_index(drop=True, inplace=True)
     latest_version = arrow.get(
-        train_farm.timestamp.iloc[-1]).format('YYYY-MM-DD')
+        int(train_farm.timestamp.iloc[-1])).format('YYYY-MM-DD')
 
     actual = error.actual.values
     prediction = error.prediction.values
@@ -195,7 +195,7 @@ def performance(client):
         ahead and farm owners profit from energy bidding for the next day.</p>""",
         unsafe_allow_html=True)
 
-    log = st.beta_expander('Show log for past trainings')
+    log = st.expander('Show log for past trainings')
     log.write(train_farm)
 
 
@@ -232,7 +232,7 @@ def explain(client):
 
     col_name = [format_title(col) for col in list(X.columns)]
 
-    importance = st.beta_expander(
+    importance = st.expander(
         'Feature importance based on SHAP value', expanded=True)
     importance.markdown(
         """<p style="text-align:justify;">
@@ -265,7 +265,7 @@ def explain(client):
     summary_plot(shap_val, X, show=False, feature_names=col_name)
     importance.pyplot(bbox_inches='tight', dpi=150)
 
-    contribution = st.beta_expander(
+    contribution = st.expander(
         'Feature contribution for individual prediction')
     contribution.markdown(
         """<p style="text-align:justify;">
